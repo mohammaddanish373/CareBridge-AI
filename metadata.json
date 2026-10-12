@@ -1,0 +1,6 @@
+{
+  "name": "CareBridge AI",
+  "description": "Understand Your Next Step. Find the Right Care. An AI-assisted healthcare guidance and care navigation platform designed for social impact.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
