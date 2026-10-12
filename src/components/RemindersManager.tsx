@@ -42,8 +42,22 @@ const INITIAL_DEMO_REMINDERS: ReminderItem[] = [
   },
 ];
 
+const REMINDER_FORM_ERRORS: Record<string, { title: string; dateTime: string }> = {
+  en: { title: 'Please enter a reminder title.', dateTime: 'Please select a date and time for the reminder.' },
+  hi: { title: 'कृपया रिमाइंडर का शीर्षक दर्ज करें।', dateTime: 'कृपया रिमाइंडर के लिए तारीख और समय चुनें।' },
+  bn: { title: 'অনুগ্রহ করে অনুস্মারকের একটি শিরোনাম লিখুন।', dateTime: 'অনুগ্রহ করে অনুস্মারকের জন্য একটি তারিখ এবং সময় নির্বাচন করুন।' },
+  ta: { title: 'நினைவூட்டல் தலைப்பை உள்ளிடவும்.', dateTime: 'நினைவூட்டலுக்கான தேதி மற்றும் நேரத்தைத் தேர்ந்தெடுக்கவும்.' },
+  te: { title: 'దయచేసి రిమైండర్ శీర్షికను నమోదు చేయండి.', dateTime: 'దయచేసి రిమైండర్ కోసం తేదీ మరియు సమయాన్ని ఎంచుకోండి.' },
+  mr: { title: 'कृपया स्मरणपत्राचे शीर्षक प्रविष्ट करा.', dateTime: 'कृपया स्मरणपत्रासाठी तारीख आणि वेळ निवडा.' },
+  gu: { title: 'કૃપા કરીને રિમાઇન્ડર શીર્ષક દાખલ કરો.', dateTime: 'કૃપા કરીને રિમાઇન્ડર માટે તારીખ અને સમય પસંદ કરો.' },
+  pa: { title: 'ਕਿਰਪਾ ਕਰਕੇ ਰੀਮਾਈਂਡਰ ਦਾ ਸਿਰਲੇਖ ਦਰਜ ਕਰੋ।', dateTime: 'ਕਿਰਪਾ ਕਰਕੇ ਰੀਮਾਈਂਡਰ ਲਈ ਮਿਤੀ ਅਤੇ ਸਮਾਂ ਚੁਣੋ।' },
+  kn: { title: 'ದಯವಿಟ್ಟು ಜ್ಞಾಪನೆ ಶೀರ್ಷಿಕೆಯನ್ನು ನಮೂದಿಸಿ.', dateTime: 'ದಯವಿಟ್ಟು ಜ್ಞಾಪನೆಗಾಗಿ ದಿನಾಂಕ ಮತ್ತು ಸಮಯವನ್ನು ಆಯ್ಕೆಮಾಡಿ.' },
+  ml: { title: 'ദയവായി ഓർമ്മപ്പെടുത്തൽ ശീർഷകം നൽകുക.', dateTime: 'ദയവായി ഓർമ്മപ്പെടുത്തലിനായി തീയതിയും സമയവും തിരഞ്ഞെടുക്കുക.' },
+  ur: { title: 'براہ کرم یاد دہانی کا عنوان درج کریں۔', dateTime: 'براہ کرم یاد دہانی کے لیے تاریخ اور وقت منتخب کریں۔' },
+};
+
 export const RemindersManager: React.FC = () => {
-  const { t, isRTL } = useLanguage();
+  const { t, currentLanguage, isRTL } = useLanguage();
 
   const [reminders, setReminders] = useState<ReminderItem[]>(() => {
     try {
@@ -77,12 +91,13 @@ export const RemindersManager: React.FC = () => {
 
   const handleAddReminder = (e: React.FormEvent) => {
     e.preventDefault();
+    const errorStrings = REMINDER_FORM_ERRORS[currentLanguage.code] || REMINDER_FORM_ERRORS.en;
     if (!title.trim()) {
-      setFormError('Please enter a reminder title.');
+      setFormError(errorStrings.title);
       return;
     }
     if (!dateTime) {
-      setFormError('Please select a date and time for the reminder.');
+      setFormError(errorStrings.dateTime);
       return;
     }
 

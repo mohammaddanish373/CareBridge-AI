@@ -30,7 +30,7 @@ const ai = apiKey
 // Resilient model invocation utility prioritizing valid active aliases
 async function generateGeminiContent(params: any) {
   if (!ai) throw new Error('Gemini API is not configured.');
-  const candidateModels = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+  const candidateModels = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
   let lastErr = null;
   for (const model of candidateModels) {
     try {
@@ -246,7 +246,8 @@ app.post('/api/health-guidance/chat', async (req, res) => {
 
     // Step 2: Server-side Gemini AI Call
     if (ai) {
-      const systemInstruction = `You are CareBridge AI, a compassionate, safety-first healthcare guidance companion built for social impact to help underserved users understand their next step.
+      try {
+        const systemInstruction = `You are CareBridge AI, a compassionate, safety-first healthcare guidance companion built for social impact to help underserved users understand their next step.
 
 TARGET COMMUNICATION LANGUAGE:
 You MUST respond entirely in the user's selected language: ${language} (language code: ${languageCode}) using its appropriate native script (e.g., Devanagari for Hindi/Marathi, Bengali script for Bengali, Tamil script for Tamil, Telugu script for Telugu, Gujarati script for Gujarati, Gurmukhi for Punjabi, Kannada script for Kannada, Malayalam script for Malayalam, Urdu script for Urdu).
@@ -269,36 +270,39 @@ CRITICAL MEDICAL LIMITATIONS & GUARDRAILS:
 9. If you have gathered 3 or more responses, gently invite the user to click the "Generate Clinician-Ready Summary" button to create a clear brief they can take to a qualified healthcare professional.
 10. If the user mentions any emergency symptom, immediately advise them to seek emergency services.`;
 
-      // Build formatted conversation prompt
-      const conversationText = messages
-        .map((m: { role: string; text: string }) => `${m.role === 'user' ? 'User' : 'CareBridge AI'}: ${m.text}`)
-        .join('\n');
+        // Build formatted conversation prompt
+        const conversationText = messages
+          .map((m: { role: string; text: string }) => `${m.role === 'user' ? 'User' : 'CareBridge AI'}: ${m.text}`)
+          .join('\n');
 
-      const response = await generateGeminiContent({
-        contents: conversationText,
-        config: {
-          systemInstruction,
-          temperature: 0.3,
-        },
-      });
+        const response = await generateGeminiContent({
+          contents: conversationText,
+          config: {
+            systemInstruction,
+            temperature: 0.3,
+          },
+        });
 
-      const replyText = response.text || "Thank you for sharing. Could you tell me a bit more about when this started and whether it has been getting better or worse?";
+        const replyText = response.text || "Thank you for sharing. Could you tell me a bit more about when this started and whether it has been getting better or worse?";
 
-      // Double-check AI reply doesn't overlook emergency warning
-      const replyCheck = checkEmergencyRedFlags(replyText);
-      if (replyCheck.isEmergency) {
+        // Double-check AI reply doesn't overlook emergency warning
+        const replyCheck = checkEmergencyRedFlags(replyText);
+        if (replyCheck.isEmergency) {
+          return res.json({
+            isEmergency: true,
+            emergencyReason: replyCheck.reason,
+            emergencyAction: replyCheck.recommendedAction,
+            message: replyText,
+          });
+        }
+
         return res.json({
-          isEmergency: true,
-          emergencyReason: replyCheck.reason,
-          emergencyAction: replyCheck.recommendedAction,
+          isEmergency: false,
           message: replyText,
         });
+      } catch (aiErr: any) {
+        console.warn('AI chat attempt encountered issue, using verified multilingual guidance:', aiErr?.message || aiErr);
       }
-
-      return res.json({
-        isEmergency: false,
-        message: replyText,
-      });
     }
 
     // Fallback safe conversational flow if API key is not present or offline
@@ -338,7 +342,8 @@ app.post('/api/health-guidance/summarize', async (req, res) => {
       .join('\n');
 
     if (ai) {
-      const prompt = `Review the following health guidance conversation. Extract the reported details and construct a structured Clinician-Ready Summary.
+      try {
+        const prompt = `Review the following health guidance conversation. Extract the reported details and construct a structured Clinician-Ready Summary.
 
 IMPORTANT RULES:
 - Do NOT invent or infer symptoms that were not explicitly stated by the user.
@@ -352,86 +357,99 @@ IMPORTANT RULES:
 Conversation:
 ${conversationText}`;
 
-      const response = await generateGeminiContent({
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              mainConcern: {
-                type: Type.STRING,
-                description: `Primary concern in ${language}`,
-              },
-              reportedSymptoms: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: `Symptoms in ${language}`,
-              },
-              reportedDurationAndChanges: {
-                type: Type.STRING,
-                description: `Duration in ${language}`,
-              },
-              relevantAnswersProvided: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: `Answers in ${language}`,
-              },
-              unansweredQuestions: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: `Unanswered in ${language}`,
-              },
-              questionsToAskClinician: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: `Questions in ${language}`,
-              },
-              cautiousNextStep: {
-                type: Type.STRING,
-                description: `Next step in ${language}`,
-              },
-              safetyNotice: {
-                type: Type.STRING,
-                description: `Safety notice in ${language}`,
-              },
-              englishVersion: {
-                type: Type.OBJECT,
-                description: 'Bilingual translation in English for healthcare professionals',
-                properties: {
-                  mainConcern: { type: Type.STRING },
-                  reportedSymptoms: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  reportedDurationAndChanges: { type: Type.STRING },
-                  relevantAnswersProvided: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  unansweredQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  questionsToAskClinician: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  cautiousNextStep: { type: Type.STRING },
-                  safetyNotice: { type: Type.STRING },
+        const response = await generateGeminiContent({
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                mainConcern: {
+                  type: Type.STRING,
+                  description: `Primary concern in ${language}`,
                 },
-                required: [
-                  'mainConcern',
-                  'reportedSymptoms',
-                  'reportedDurationAndChanges',
-                  'questionsToAskClinician',
-                  'cautiousNextStep',
-                ],
+                reportedSymptoms: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: `Symptoms in ${language}`,
+                },
+                reportedDurationAndChanges: {
+                  type: Type.STRING,
+                  description: `Duration in ${language}`,
+                },
+                relevantAnswersProvided: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: `Answers in ${language}`,
+                },
+                unansweredQuestions: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: `Unanswered in ${language}`,
+                },
+                questionsToAskClinician: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: `Questions in ${language}`,
+                },
+                cautiousNextStep: {
+                  type: Type.STRING,
+                  description: `Next step in ${language}`,
+                },
+                safetyNotice: {
+                  type: Type.STRING,
+                  description: `Safety notice in ${language}`,
+                },
+                englishVersion: {
+                  type: Type.OBJECT,
+                  description: 'Bilingual translation in English for healthcare professionals',
+                  properties: {
+                    mainConcern: { type: Type.STRING },
+                    reportedSymptoms: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    reportedDurationAndChanges: { type: Type.STRING },
+                    relevantAnswersProvided: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    unansweredQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    questionsToAskClinician: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    cautiousNextStep: { type: Type.STRING },
+                    safetyNotice: { type: Type.STRING },
+                  },
+                  required: [
+                    'mainConcern',
+                    'reportedSymptoms',
+                    'reportedDurationAndChanges',
+                    'questionsToAskClinician',
+                    'cautiousNextStep',
+                  ],
+                },
               },
+              required: [
+                'mainConcern',
+                'reportedSymptoms',
+                'reportedDurationAndChanges',
+                'relevantAnswersProvided',
+                'unansweredQuestions',
+                'questionsToAskClinician',
+                'cautiousNextStep',
+                'englishVersion',
+              ],
             },
-            required: [
-              'mainConcern',
-              'reportedSymptoms',
-              'reportedDurationAndChanges',
-              'relevantAnswersProvided',
-              'unansweredQuestions',
-              'questionsToAskClinician',
-              'cautiousNextStep',
-            ],
           },
-        },
-      });
+        });
 
-      const summaryJson = JSON.parse(response.text || '{}');
-      return res.json(summaryJson);
+        const summaryJson = JSON.parse(response.text || '{}');
+        if (!summaryJson.englishVersion && languageCode === 'en') {
+          summaryJson.englishVersion = {
+            mainConcern: summaryJson.mainConcern,
+            reportedSymptoms: summaryJson.reportedSymptoms,
+            reportedDurationAndChanges: summaryJson.reportedDurationAndChanges,
+            questionsToAskClinician: summaryJson.questionsToAskClinician,
+            cautiousNextStep: summaryJson.cautiousNextStep,
+          };
+        }
+        return res.json(summaryJson);
+      } catch (aiErr: any) {
+        console.warn('Gemini summarize call encountered issue, using fallback summary:', aiErr?.message || aiErr);
+      }
     }
 
     // Deterministic fallback summary if API is offline
@@ -455,6 +473,18 @@ ${conversationText}`;
         'Schedule an evaluation with a licensed General Physician or family clinic within 24 to 48 hours for a physical assessment.',
       safetyNotice:
         'This summary contains self-reported patient information collected for navigation purposes. It does not constitute a medical diagnosis, clinical impression, or treatment plan.',
+      englishVersion: {
+        mainConcern: userMsgs[0] || 'Unspecified health concern',
+        reportedSymptoms: userMsgs.slice(0, 3),
+        reportedDurationAndChanges: userMsgs[1] || 'Not fully specified during navigation session',
+        questionsToAskClinician: [
+          'What potential causes could explain these symptoms?',
+          'Are there any diagnostic tests or physical examinations you recommend?',
+          'What warning signs should prompt me to seek immediate emergency care?',
+        ],
+        cautiousNextStep:
+          'Schedule an evaluation with a licensed General Physician or family clinic within 24 to 48 hours for a physical assessment.',
+      },
     });
   } catch (error: any) {
     console.error('Error generating summary:', error);
@@ -471,7 +501,8 @@ app.post('/api/explain-report', async (req, res) => {
     }
 
     if (ai) {
-      const prompt = `You are CareBridge AI Medical Report Explainer.
+      try {
+        const prompt = `You are CareBridge AI Medical Report Explainer.
 Explain the following laboratory or diagnostic report text for educational health literacy.
 
 CRITICAL MULTILINGUAL & INTEGRITY RULES:
@@ -484,57 +515,60 @@ CRITICAL MULTILINGUAL & INTEGRITY RULES:
 Report Text:
 ${reportText}`;
 
-      const response = await generateGeminiContent({
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              reportType: {
-                type: Type.STRING,
-                description: 'General category of test (e.g. Complete Blood Count, Lipid Profile, Thyroid Panel)',
-              },
-              overview: {
-                type: Type.STRING,
-                description: 'Plain-language high level explanation of what this test generally assesses',
-              },
-              parameters: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING, description: 'Parameter or marker name' },
-                    reportedValue: { type: Type.STRING, description: 'Exact value and unit from report' },
-                    referenceRange: { type: Type.STRING, description: 'Reference interval indicated or noted' },
-                    plainLanguageMeaning: { type: Type.STRING, description: 'What this marker does in the human body in simple terms' },
-                    neutralObservation: { type: Type.STRING, description: 'Factual observation comparing value to reference range' },
+        const response = await generateGeminiContent({
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                reportType: {
+                  type: Type.STRING,
+                  description: 'General category of test (e.g. Complete Blood Count, Lipid Profile, Thyroid Panel)',
+                },
+                overview: {
+                  type: Type.STRING,
+                  description: 'Plain-language high level explanation of what this test generally assesses',
+                },
+                parameters: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      name: { type: Type.STRING, description: 'Parameter or marker name' },
+                      reportedValue: { type: Type.STRING, description: 'Exact value and unit from report' },
+                      referenceRange: { type: Type.STRING, description: 'Reference interval indicated or noted' },
+                      plainLanguageMeaning: { type: Type.STRING, description: 'What this marker does in the human body in simple terms' },
+                      neutralObservation: { type: Type.STRING, description: 'Factual observation comparing value to reference range' },
+                    },
+                    required: ['name', 'reportedValue', 'plainLanguageMeaning', 'neutralObservation'],
                   },
-                  required: ['name', 'reportedValue', 'plainLanguageMeaning', 'neutralObservation'],
+                },
+                missingContextFactors: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: 'Missing clinical factors needed for a real medical interpretation',
+                },
+                questionsForDoctor: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: 'Questions to discuss with a licensed physician',
+                },
+                disclaimer: {
+                  type: Type.STRING,
+                  description: 'Clear statement that this is an educational prototype and not clinical interpretation',
                 },
               },
-              missingContextFactors: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'Missing clinical factors needed for a real medical interpretation',
-              },
-              questionsForDoctor: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'Questions to discuss with a licensed physician',
-              },
-              disclaimer: {
-                type: Type.STRING,
-                description: 'Clear statement that this is an educational prototype and not clinical interpretation',
-              },
+              required: ['reportType', 'overview', 'parameters', 'missingContextFactors', 'questionsForDoctor'],
             },
-            required: ['reportType', 'overview', 'parameters', 'missingContextFactors', 'questionsForDoctor'],
           },
-        },
-      });
+        });
 
-      const parsed = JSON.parse(response.text || '{}');
-      return res.json(parsed);
+        const parsed = JSON.parse(response.text || '{}');
+        return res.json(parsed);
+      } catch (aiErr: any) {
+        console.warn('Gemini report explainer call encountered issue, using fallback explanation:', aiErr?.message || aiErr);
+      }
     }
 
     // Fallback explanation if model is offline
